@@ -1,0 +1,3 @@
+[submodule "qdldl"]
+	path = qdldl
+	url = git@github.com:osqp/qdldl.git

@@ -1,0 +1,12 @@
+{
+  "files.associations": {
+    "dense": "cpp",
+    "lu": "cpp",
+    "core": "cpp",
+    "orderingmethods": "cpp",
+    "sparsecore": "cpp",
+    "stdexcept": "cpp",
+    "random": "cpp"
+  },
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}

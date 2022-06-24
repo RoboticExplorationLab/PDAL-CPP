@@ -20,4 +20,8 @@ RUN cd /tmp/eigen-3.4.0 && mkdir build && cd build && cmake .. && make && make i
 
 # [Optional] Uncomment this section to install additional packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends clang-format
+    && apt-get -y install --no-install-recommends \
+    clang-format \
+    libgtest-dev
+
+RUN cd /usr/src/gtest && cmake .. && make && make install

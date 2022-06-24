@@ -5,8 +5,6 @@
  * @version 0.1
  * @date 2022-06-24
  *
- * @copyright Copyright (c) 2022
- *
  */
 
 #include "Pdal.h"
@@ -16,17 +14,17 @@
 namespace pdal {
 
 namespace {
-void emplaceBackMatrixToTriplet(const PDAL_int_t startRow, const PDAL_int_t startCol,
-                                const PdalSolver::sparseMatrix_t& mat, std::vector<PdalSolver::triplet_t>& triplet) {
+void emplaceBackMatrixToTriplet(const PDAL_int_t startRow, const PDAL_int_t startCol, const sparseMatrix_t& mat,
+                                std::vector<triplet_t>& triplet) {
   for (PDAL_int_t j = 0; j < mat.outerSize(); ++j) {
-    for (PdalSolver::sparseMatrix_t::InnerIterator it(mat, j); it; ++it) {
+    for (sparseMatrix_t::InnerIterator it(mat, j); it; ++it) {
       triplet.emplace_back(startRow + it.row(), startCol + it.col(), it.value());
     }
   }
 };
 
 void emplaceRepeatDiagonalToTriplet(const PDAL_int_t startRow, const PDAL_float_t value, const PDAL_int_t n,
-                                    std::vector<PdalSolver::triplet_t>& triplet) {
+                                    std::vector<triplet_t>& triplet) {
   for (PDAL_int_t j = 0; j < n; ++j) {
     triplet.emplace_back(startRow + n, startRow + n, value);
   }
@@ -35,15 +33,8 @@ void emplaceRepeatDiagonalToTriplet(const PDAL_int_t startRow, const PDAL_float_
 
 PdalSolver::PdalSolver(settings_t settings) : settings_(settings){};
 
-bool PdalSolver::setupProblem(const sparseMatrix_t& H, const vector_t& h, const sparseMatrix_t& G, const vector_t& g,
-                              const sparseMatrix_t& C, const vector_t& c) {
-  H_ptr_ = &H;
-  G_ptr_ = &G;
-  C_ptr_ = &C;
-
-  h_ptr_ = &h;
-  g_ptr_ = &g;
-  c_ptr_ = &c;
+bool PdalSolver::setupProblem(const LQProblem& ldProblem) {
+  lqProblem_ = ldProblem;
 
   resize();
 
@@ -52,17 +43,17 @@ bool PdalSolver::setupProblem(const sparseMatrix_t& H, const vector_t& h, const 
   PDAL_int_t nnzHessian = (Hn + 1) * Hn / 2;
   std::vector<triplet_t> hessianTriplets;
   hessianTriplets.reserve(nnzHessian);
-  emplaceBackMatrixToTriplet(0, 0, H.triangularView<Eigen::Upper>(), hessianTriplets);
-  emplaceBackMatrixToTriplet(0, numDecisionVariables_, G.transpose(), hessianTriplets);
-  emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, C.transpose(), hessianTriplets);
+  emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
+  emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
+  emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, lqProblem_.C.transpose(), hessianTriplets);
   emplaceRepeatDiagonalToTriplet(numDecisionVariables_, 1.0, numEqConstraints_ + numIneqConstraints_, hessianTriplets);
 
   sparseMatrix_t hessian(Hn, Hn);
   hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
   assert(hessian.isCompressed());
+
   Lnz_.resize(Hn);
   etree_.resize(Hn);
-
   std::vector<PDAL_int_t> flag(Hn);
   sumLnz_ = QDLDL_etree(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(), flag.data(), Lnz_.data(), etree_.data());
   if (sumLnz_ < 0) {
@@ -73,13 +64,13 @@ bool PdalSolver::setupProblem(const sparseMatrix_t& H, const vector_t& h, const 
 }
 
 void PdalSolver::resize() {
-  assert(H_ptr_->rows() == h_ptr_->rows() || (H_ptr_->rows() == 0 || h_ptr_->rows() == 0));
-  assert(G_ptr_->rows() == g_ptr_->rows());
-  assert(C_ptr_->rows() == c_ptr_->rows());
+  assert(lqProblem_.H.rows() == lqProblem_.h.rows() || (lqProblem_.H.rows() == 0 || lqProblem_.h.rows() == 0));
+  assert(lqProblem_.G.rows() == lqProblem_.g.rows());
+  assert(lqProblem_.C.rows() == lqProblem_.c.rows());
 
-  numDecisionVariables_ = H_ptr_->rows();
-  numEqConstraints_ = G_ptr_->rows();
-  numIneqConstraints_ = C_ptr_->rows();
+  numDecisionVariables_ = lqProblem_.H.rows();
+  numEqConstraints_ = lqProblem_.G.rows();
+  numIneqConstraints_ = lqProblem_.C.rows();
 
   lambda_.resize(numEqConstraints_);
   mu_.resize(numIneqConstraints_);

@@ -9,6 +9,9 @@ set(QDLDL_BUILD_DEMO_EXE OFF)
 set(QDLDL_UNITTESTS OFF) 
 set(QDLDL_LONG OFF)
 
+set(CMAKE_C_FLAGS "-Wall -Wfatal-errors")
+set(CMAKE_CXX_FLAGS "-Wall -Wfatal-errors")
+
 find_package(Eigen3 REQUIRED NO_MODULE)
 add_subdirectory(qdldl)
 

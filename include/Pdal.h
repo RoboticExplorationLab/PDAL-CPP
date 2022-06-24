@@ -17,9 +17,15 @@ class PdalSolver {
   PdalSolver(settings_t settings);
 
   bool setupProblem(const LQProblem& ldProblem);
-  // bool solve(vector_t& x);
+  bool solve(vector_t& x);
+  int newtonSolve(const vector_t& lambda, const vector_t& mu, const PDAL_float_t rho, vector_t& y, vector_t& w,
+                  vector_t& x);
+  void evaluateConstraints(const vector_t& mu, const vector_t& x);
+  void evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x);
 
-  const std::vector<QDLDL_int>& etree() { return etree_; }
+  const std::vector<QDLDL_int>& etree() const { return etree_; }
+  const settings_t& settings() const { return settings_; }
+  PDAL_int_t numDecisionVariables() const { return numDecisionVariables_; }
 
  private:
   void resize();
@@ -31,16 +37,12 @@ class PdalSolver {
   PDAL_int_t numEqConstraints_;
   PDAL_int_t numIneqConstraints_;
 
-  vector_t lambda_; /** Equality constraints multiplier */
-  vector_t mu_;     /** Inequality constraints multiplier */
-
-  PDAL_float_t rho_; /** Penalty */
-
-  vector_t y_; /** Dual variable equality constraints */
-  vector_t w_; /** Dual variable inequality constraints */
-
   vector_t eqConstraints_;   /** Evaluation of the equality constraints */
   vector_t ineqConstraints_; /** Evaluation of the inequality constraints */
+  sparseMatrix_t Ic_;
+
+  vector_t primalResidual_;
+  vector_t dualResidual_;
 
   std::vector<QDLDL_int> Lnz_;
   std::vector<QDLDL_int> etree_;

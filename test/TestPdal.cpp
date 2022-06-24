@@ -2,14 +2,9 @@
 
 #include <gtest/gtest.h>
 
-using namespace pdal;
+#include "TestData.h"
 
-const QDLDL_int An = 10;
-const QDLDL_int Ap[] = {0, 1, 2, 4, 5, 6, 8, 10, 12, 14, 17};
-const QDLDL_int Ai[] = {0, 1, 1, 2, 3, 4, 1, 5, 0, 6, 3, 7, 6, 8, 1, 2, 9};
-const QDLDL_float Ax[] = {1.0,       0.460641,   -0.121189, 0.417928, 0.177828,  0.1,      -0.0290058, -1.0, 0.350321,
-                          -0.441092, -0.0845395, -0.316228, 0.178663, -0.299077, 0.182452, -1.56506,   -0.1};
-const QDLDL_float b[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+using namespace pdal;
 
 TEST(Pdal, elimination_tree_construction) {
   Eigen::Map<const sparseMatrix_t> H(An, An, Ap[An], Ap, Ai, Ax);
@@ -30,4 +25,29 @@ TEST(Pdal, elimination_tree_construction) {
   QDLDL_int sumLnz = QDLDL_etree(An, Ap, Ai, work.data(), Lnz.data(), etree.data());
   EXPECT_GE(sumLnz, 0);
   EXPECT_EQ(solver.etree(), etree);
+}
+
+TEST(Pdal, test) {
+  PdalSolver solver;
+  LQProblem lqProblem;
+
+  lqProblem.H = get_H();
+  lqProblem.h = get_h();
+
+  lqProblem.G = get_G();
+  lqProblem.g = get_g();
+
+  lqProblem.C = get_C();
+  lqProblem.c = get_c();
+
+  solver.setupProblem(lqProblem);
+
+  vector_t x = vector_t::Zero(solver.numDecisionVariables());
+  solver.solve(x);
+
+  EXPECT_LE((lqProblem.G * x - lqProblem.g).norm(), solver.settings().dualResidualTolerance);  // Equality constraints
+
+  vector_t inEq = lqProblem.C * x - lqProblem.c;
+  EXPECT_LE(inEq.cwiseMin(0).norm(), solver.settings().dualResidualTolerance)
+      << "Ineq: " << inEq.transpose();  // InEquality constraintsint
 }

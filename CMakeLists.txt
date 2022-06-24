@@ -36,6 +36,8 @@ find_package(GTest REQUIRED)
 
 add_executable(${PROJECT_NAME}-test
   test/TestPdal.cpp
+  test/TestData.cpp
+  test/TestData.h
 )
 target_link_libraries(${PROJECT_NAME}-test
   ${PROJECT_NAME}

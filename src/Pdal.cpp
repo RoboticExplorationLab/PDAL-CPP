@@ -9,24 +9,34 @@
 
 #include "Pdal.h"
 
+#include <iostream>
+#include <sstream>
 #include <vector>
 
 namespace pdal {
 
 namespace {
 void emplaceBackMatrixToTriplet(const PDAL_int_t startRow, const PDAL_int_t startCol, const sparseMatrix_t& mat,
-                                std::vector<triplet_t>& triplet) {
+                                std::vector<triplet_t>& triplet, const PDAL_int_t rowBound = -1,
+                                const PDAL_int_t colBound = -1) {
   for (PDAL_int_t j = 0; j < mat.outerSize(); ++j) {
     for (sparseMatrix_t::InnerIterator it(mat, j); it; ++it) {
+      assert(rowBound == -1 || startRow + it.row() <= rowBound);
+      assert(colBound == -1 || startCol + it.col() <= colBound);
+
       triplet.emplace_back(startRow + it.row(), startCol + it.col(), it.value());
     }
   }
 };
 
 void emplaceRepeatDiagonalToTriplet(const PDAL_int_t startRow, const PDAL_float_t value, const PDAL_int_t n,
-                                    std::vector<triplet_t>& triplet) {
+                                    std::vector<triplet_t>& triplet, const PDAL_int_t rowBound = -1,
+                                    const PDAL_int_t colBound = -1) {
+  assert(rowBound == -1 || startRow + n - 1 <= rowBound);
+  assert(colBound == -1 || startRow + n - 1 <= colBound);
+
   for (PDAL_int_t j = 0; j < n; ++j) {
-    triplet.emplace_back(startRow + n, startRow + n, value);
+    triplet.emplace_back(startRow + j, startRow + j, value);
   }
 };
 }  // namespace
@@ -51,6 +61,7 @@ bool PdalSolver::setupProblem(const LQProblem& ldProblem) {
   sparseMatrix_t hessian(Hn, Hn);
   hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
   assert(hessian.isCompressed());
+  assert(hessian.nonZeros() <= nnzHessian);
 
   Lnz_.resize(Hn);
   etree_.resize(Hn);
@@ -72,76 +83,153 @@ void PdalSolver::resize() {
   numEqConstraints_ = lqProblem_.G.rows();
   numIneqConstraints_ = lqProblem_.C.rows();
 
-  lambda_.resize(numEqConstraints_);
-  mu_.resize(numIneqConstraints_);
-
-  y_.resize(numEqConstraints_);
-  w_.resize(numIneqConstraints_);
-
   eqConstraints_.resize(numEqConstraints_);
   ineqConstraints_.resize(numIneqConstraints_);
+
+  primalResidual_.resize(numDecisionVariables_);
+  dualResidual_.resize(numEqConstraints_ + numIneqConstraints_);
 }
 
-// bool PdalSolver::solve(vector_t& x) {
-//   if (x.size() != numDecisionVariables_) {
-//     throw std::invalid_argument("The size of the decision variables x is different from the # of cols of H");
-//   }
+void PdalSolver::evaluateConstraints(const vector_t& mu, const vector_t& x) {
+  // G* x - g
+  eqConstraints_ = -lqProblem_.g;
+  eqConstraints_.noalias() += lqProblem_.G * x;
 
-//   PDAL_float_t rho_ = settings_.initialRho;
+  // -C*x + c
+  ineqConstraints_ = lqProblem_.c;
+  ineqConstraints_.noalias() -= lqProblem_.C * x;
 
-//   vector_t eqConstraints_ = -g;
-//   eqConstraints_.noalias() += G * x;
+  std::vector<triplet_t> IcTriplets;
+  IcTriplets.reserve(numIneqConstraints_);
+  for (PDAL_int_t n = 0; n < numIneqConstraints_; ++n) {
+    if (ineqConstraints_(n) > 0 || mu(n) > 0) {
+      IcTriplets.emplace_back(n, n, 1.0);
+    }
+  }
+  Ic_.resize(numIneqConstraints_, numIneqConstraints_);
+  Ic_.setFromTriplets(IcTriplets.cbegin(), IcTriplets.cend());
+  assert(Ic_.nonZeros() <= numIneqConstraints_);
+}
 
-//   vector_t ineqConstraints_ = c;
-//   ineqConstraints_.noalias() -= C * x;
+void PdalSolver::evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x) {
+  // primalResidual = H * xResult + h + G '*lambda - C' * mu;
+  primalResidual_ = lqProblem_.h;
+  primalResidual_.noalias() += lqProblem_.H * x;
+  primalResidual_.noalias() += lqProblem_.G.transpose() * lambda;
+  primalResidual_.noalias() -= lqProblem_.C.transpose() * mu;
 
-//   std::vector<triplet_t> IcTriplets;
-//   IcTriplets.reserve(numIneqConstraints_);
-//   sparseMatrix_t Ic(numIneqConstraints_, numIneqConstraints_);
+  dualResidual_.head(numEqConstraints_) = eqConstraints_;
+  dualResidual_.tail(numIneqConstraints_) = ineqConstraints_.cwiseMax(0);
+}
 
-//   for (PDAL_int_t outerIterNum = 0; outerIterNum < settings_.maxOuterIter; ++outerIterNum) {
-//     for (PDAL_int_t n = 0; n < numIneqConstraints_; ++n) {
-//       if (ineqConstraints_(n) > 0 || mu_(n) > 0) {
-//         IcTriplets.emplace_back(n, n, 1.0);
-//       }
-//     }
-//     Ic.setFromTriplets(IcTriplets.cbegin(), IcTriplets.cend());
+bool PdalSolver::solve(vector_t& x) {
+  if (x.size() != numDecisionVariables_) {
+    std::stringstream ss;
+    ss << "The size of the decision variables x is " << x.size()
+       << " which is different from the size of decision variables (" << numDecisionVariables_
+       << "). Run setupProblem first or check the input size.";
+    throw std::invalid_argument(ss.str());
+  }
 
-//     // y_ = lambda_ + rho_ * eqConstraints_;
-//     y_ = lambda_;
-//     y_.noalias() += rho_ * eqConstraints_;
+  PDAL_float_t rho = settings_.initialRho;
+  vector_t lambda = vector_t::Zero(numEqConstraints_); /** Equality constraints multiplier */
+  vector_t mu = vector_t::Zero(numIneqConstraints_);   /** Inequality constraints multiplier */
 
-//     // w_ = mu_ + rho_ * Ic * ineqConstraints_;
-//     w_ = mu_;
-//     w_.noalias() += rho_ * Ic * ineqConstraints_;
-//   }
-// }
+  for (PDAL_int_t outerIterNum = 0; outerIterNum < settings_.maxOuterIter; ++outerIterNum) {
+    evaluateConstraints(mu, x);
+    evaluatePrimalDualResidual(lambda, mu, x);
 
-// bool PdalSolver::innerLoop(const sparseMatrix_t& H, const vector_t& h, const sparseMatrix_t& G, const vector_t& g,
-//                            const sparseMatrix_t& C, const vector_t& c, vector_t& x) {
-// for (PDAL_int_t innerIterNum = 0; innerIterNum < settings_.maxInnerIter; ++innerIterNum) {
-//   // L = H * xResult + h + G ' * y_ - (Ic*C)' * w_;
-//   vector_t L = h;
-//   L.noalias() += H * x;
-//   L.noalias() += G.transpose() * x;
-//   sparseMatrix_t temp = Ic * C;
-//   L.noalias() -= temp.transpose() * w_;
+    PDAL_float_t dualResidualNorm = dualResidual_.norm();
+    PDAL_float_t primalResidualNorm = primalResidual_.norm();
 
-//   PDAL_int_t sizeHessian = numDecisionVariables_ + numEqConstraints + numIneqConstraints_;
-//   vector_t residual(sizeHessian);
-//   residual << L, eqConstraints_ + 1 / rho_ * (lambda_ - y_), Ic * ineqConstraints_ + 1 / rho_ * (mu_ - w_);
-//   if (residual.norm() < settings_.innerTolerance) {
-//     break;
-//   }
+    int innerItr;
+    if (settings_.displayShortSummary) {
+      if (outerIterNum == 0) {
+        std::cerr << "Initial norm(dualResidual): " << dualResidualNorm
+                  << " norm(primalResidual): " << primalResidualNorm << "\n";
+      } else {
+        std::cerr << "Iter: " << outerIterNum << " InnerItr: " << innerItr
+                  << " norm(dualResidual): " << dualResidualNorm << " norm(primalResidual): " << primalResidualNorm
+                  << "\n";
+      }
+    }
+    if (dualResidualNorm < settings_.dualResidualTolerance && primalResidualNorm < settings_.primalResidualTolerance) {
+      return true;
+    }
 
-//   PDAL_int_t nnzHessian = (sizeHessian + 1) * sizeHessian / 2;
-//   std::vector<triplet_t> hessianTriplets;
-//   hessianTriplets.reserve(nnzHessian);
-//   emplaceBackMatrixToTriplet(0, 0, H.triangularView<Eigen::Upper>(), hessianTriplets);
-//   emplaceBackMatrixToTriplet(0, numDecisionVariables_, G.transpose(), hessianTriplets);
-//   emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints, (-Ic * C).transpose(), hessianTriplets);
-//   emplaceRepeatDiagonalToTriplet(numDecisionVariables_, -1.0 / rho_, numEqConstraints + numIneqConstraints_,
-//                                  hessianTriplets);
-// }
-// }
+    vector_t y = lambda + rho * eqConstraints_;
+    vector_t w = mu + rho * Ic_ * ineqConstraints_;
+    innerItr = newtonSolve(lambda, mu, rho, y, w, x);
+
+    // lambda = lambda + rho * (G*xResult-g);
+    lambda += rho * (lqProblem_.G * x);
+    lambda -= rho * lqProblem_.g;
+
+    // mu = mu - rho * (C * x - c);
+    mu -= rho * (lqProblem_.C * x);
+    mu += rho * lqProblem_.c;
+    mu = mu.cwiseMax(0);
+
+    rho *= settings_.amplificationRho;
+  }
+
+  return false;
+}
+
+int PdalSolver::newtonSolve(const vector_t& lambda, const vector_t& mu, const PDAL_float_t rho, vector_t& y,
+                            vector_t& w, vector_t& x) {
+  for (PDAL_int_t innerIterNum = 0; innerIterNum < settings_.maxInnerIter; ++innerIterNum) {
+    // L = H * x + h + G ' * y - C'*Ic'*w;
+    vector_t L = lqProblem_.h;
+    L.noalias() += lqProblem_.H * x;
+    L.noalias() += lqProblem_.G.transpose() * y;
+    vector_t tmp = Ic_ * w;
+    L.noalias() -= lqProblem_.C.transpose() * tmp;
+
+    PDAL_int_t Hn = numDecisionVariables_ + numEqConstraints_ + numIneqConstraints_;
+    vector_t residual(Hn);
+    residual << L, eqConstraints_ + 1 / rho * (lambda - y), Ic_ * ineqConstraints_ + 1 / rho * (mu - w);
+    if (residual.norm() < settings_.innerTolerance) {
+      return innerIterNum;
+    }
+
+    PDAL_int_t nnzHessian = ((Hn + 1) * Hn) / 2;
+    std::vector<triplet_t> hessianTriplets;
+    hessianTriplets.reserve(nnzHessian);
+    emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
+    emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
+    emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, (-Ic_ * lqProblem_.C).transpose(),
+                               hessianTriplets);
+    emplaceRepeatDiagonalToTriplet(numDecisionVariables_, -1.0 / rho, numEqConstraints_ + numIneqConstraints_,
+                                   hessianTriplets);
+
+    sparseMatrix_t hessian(Hn, Hn);
+    hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
+    assert(hessian.nonZeros() <= nnzHessian);
+
+    std::vector<QDLDL_int> Lp(Hn + 1), Li(sumLnz_);
+    std::vector<QDLDL_float> Lx(sumLnz_);
+    std::vector<QDLDL_float> D(Hn), Dinv(Hn);
+    std::vector<QDLDL_bool> bwork(Hn);
+    std::vector<QDLDL_int> iwork(3 * Hn);
+    std::vector<QDLDL_float> fwork(Hn);
+
+    QDLDL_int positiveValuesInD = QDLDL_factor(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(), hessian.valuePtr(),
+                                               Lp.data(), Li.data(), Lx.data(), D.data(), Dinv.data(), Lnz_.data(),
+                                               etree_.data(), bwork.data(), iwork.data(), fwork.data());
+    if (positiveValuesInD < 0) {
+      throw std::runtime_error("LDLT factorazation fail.");
+    }
+
+    vector_t dz = -residual;
+    QDLDL_solve(Hn, Lp.data(), Li.data(), Lx.data(), Dinv.data(), dz.data());
+    x += dz.head(numDecisionVariables_);
+    y += dz.segment(numDecisionVariables_, numEqConstraints_);
+    w += dz.tail(numIneqConstraints_);
+
+    evaluateConstraints(mu, x);
+  }
+  return -1;
+}
+
 }  // namespace pdal

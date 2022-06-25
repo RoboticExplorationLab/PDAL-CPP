@@ -25,6 +25,9 @@
 				"ms-vscode.cmake-tools",
 				"xaver.clang-format",
 				"tombonnike.vscode-status-bar-format-toggle",
+				"cschlosser.doxdocgen",
+				"betwo.vscode-doxygen-runner",
+				"streetsidesoftware.code-spell-checker"
 			]
 		}
 	},

@@ -43,8 +43,8 @@ void emplaceRepeatDiagonalToTriplet(const PDAL_int_t startRow, const PDAL_float_
 
 PdalSolver::PdalSolver(settings_t settings) : settings_(settings){};
 
-bool PdalSolver::setupProblem(const LQProblem& ldProblem) {
-  lqProblem_ = ldProblem;
+bool PdalSolver::setupProblem(const LQProblem& lqProblem) {
+  lqProblem_ = lqProblem;  // TODO: use pointer to speed up
 
   resize();
 
@@ -134,6 +134,7 @@ bool PdalSolver::solve(vector_t& x) {
   PDAL_float_t rho = settings_.initialRho;
   vector_t lambda = vector_t::Zero(numEqConstraints_); /** Equality constraints multiplier */
   vector_t mu = vector_t::Zero(numIneqConstraints_);   /** Inequality constraints multiplier */
+  int innerItrNum = 0;
 
   for (PDAL_int_t outerIterNum = 0; outerIterNum < settings_.maxOuterIter; ++outerIterNum) {
     evaluateConstraints(mu, x);
@@ -142,13 +143,12 @@ bool PdalSolver::solve(vector_t& x) {
     PDAL_float_t dualResidualNorm = dualResidual_.norm();
     PDAL_float_t primalResidualNorm = primalResidual_.norm();
 
-    int innerItr;
     if (settings_.displayShortSummary) {
       if (outerIterNum == 0) {
         std::cerr << "Initial norm(dualResidual): " << dualResidualNorm
                   << " norm(primalResidual): " << primalResidualNorm << "\n";
       } else {
-        std::cerr << "Iter: " << outerIterNum << " InnerItr: " << innerItr
+        std::cerr << "Iter: " << outerIterNum << " InnerItr: " << innerItrNum
                   << " norm(dualResidual): " << dualResidualNorm << " norm(primalResidual): " << primalResidualNorm
                   << "\n";
       }
@@ -159,7 +159,7 @@ bool PdalSolver::solve(vector_t& x) {
 
     vector_t y = lambda + rho * eqConstraints_;
     vector_t w = mu + rho * Ic_ * ineqConstraints_;
-    innerItr = newtonSolve(lambda, mu, rho, y, w, x);
+    innerItrNum = newtonSolve(lambda, mu, rho, y, w, x);
 
     // lambda = lambda + rho * (G*xResult-g);
     lambda += rho * (lqProblem_.G * x);
@@ -218,7 +218,7 @@ int PdalSolver::newtonSolve(const vector_t& lambda, const vector_t& mu, const PD
                                                Lp.data(), Li.data(), Lx.data(), D.data(), Dinv.data(), Lnz_.data(),
                                                etree_.data(), bwork.data(), iwork.data(), fwork.data());
     if (positiveValuesInD < 0) {
-      throw std::runtime_error("LDLT factorazation fail.");
+      throw std::runtime_error("LDLT factorization fail.");
     }
 
     vector_t dz = -residual;

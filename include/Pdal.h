@@ -16,11 +16,53 @@ class PdalSolver {
   PdalSolver() = default;
   PdalSolver(settings_t settings);
 
-  bool setupProblem(const LQProblem& ldProblem);
+  /**
+   * Setup the linear-quadratic problem. Cost, equality and inequality constraints will be copied to an internal buffer.
+   * It assumes the sparse pattern of all input matrices are fixed and the a tree structure(elimination tree)
+   * representing those sparsities will be generated after calling this function.
+   *
+   * @param[in] lqProblem: Linear-quadratic problem data
+   * @return isSucceed
+   */
+  bool setupProblem(const LQProblem& lqProblem);
+
+  /**
+   * Solve the buffered LQ-problem. The initial value is required and result will be calculated in place.
+   *
+   * @param[in, out] x: Initial value before function call. Result after function call
+   * @return isSucceed
+   */
   bool solve(vector_t& x);
+
+  /**
+   * Newton step. Inner loop of the augmented lagrangian.
+   *
+   * @param lambda
+   * @param mu
+   * @param rho
+   * @param y
+   * @param w
+   * @param x
+   * @return int: Number of iteration. -1 if it reached the max iteration.
+   */
   int newtonSolve(const vector_t& lambda, const vector_t& mu, const PDAL_float_t rho, vector_t& y, vector_t& w,
                   vector_t& x);
+
+  /**
+   * Evaluate equality, inequality constraints and the selection matrix Ic.
+   *
+   * @param mu
+   * @param x
+   */
   void evaluateConstraints(const vector_t& mu, const vector_t& x);
+
+  /**
+   * Evaluate the primal and dual residuals.
+   *
+   * @param lambda
+   * @param mu
+   * @param x
+   */
   void evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x);
 
   const std::vector<QDLDL_int>& etree() const { return etree_; }

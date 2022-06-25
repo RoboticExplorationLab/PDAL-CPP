@@ -64,8 +64,13 @@
   },
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "cSpell.words": [
+    "bwork",
+    "Dinv",
     "Eigen",
+    "fwork",
     "Ineq",
+    "iwork",
+    "LDLT",
     "pdal",
     "Pdal",
     "PDAL"

@@ -49,5 +49,5 @@ TEST(Pdal, test) {
 
   vector_t inEq = lqProblem.C * x - lqProblem.c;
   EXPECT_LE(inEq.cwiseMin(0).norm(), solver.settings().dualResidualTolerance)
-      << "Ineq: " << inEq.transpose();  // InEquality constraintsint
+      << "Ineq: " << inEq.transpose();  // Inequality constraints
 }

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.0.0)
 project(pdal VERSION 0.1.0)
 
+option(USE_OPENMP "Use openMP for Eigen" OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # QDLDL config
@@ -9,8 +11,13 @@ set(QDLDL_BUILD_DEMO_EXE OFF)
 set(QDLDL_UNITTESTS OFF) 
 set(QDLDL_LONG OFF)
 
-set(CMAKE_C_FLAGS "-Wall -Wfatal-errors")
-set(CMAKE_CXX_FLAGS "-Wall -Wfatal-errors")
+if (USE_OPEN)
+  find_package(OpenMP REQUIRED)
+endif()
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_C_FLAGS "-Wall -Wfatal-errors ${OpenMP_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-Wall -Wfatal-errors ${OpenMP_CXX_FLAGS}")
 
 find_package(Eigen3 REQUIRED NO_MODULE)
 add_subdirectory(qdldl)

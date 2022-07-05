@@ -9,6 +9,7 @@
 
 #include "Pdal.h"
 
+#include <chrono>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -130,6 +131,8 @@ bool PdalSolver::solve(vector_t& x) {
        << "). Run setupProblem first or check the input size.";
     throw std::invalid_argument(ss.str());
   }
+  std::chrono::high_resolution_clock clock;
+  auto startTime = clock.now();
 
   PDAL_float_t rho = settings_.initialRho;
   vector_t lambda = vector_t::Zero(numEqConstraints_); /** Equality constraints multiplier */
@@ -145,15 +148,20 @@ bool PdalSolver::solve(vector_t& x) {
 
     if (settings_.displayShortSummary) {
       if (outerIterNum == 0) {
-        std::cerr << "Initial norm(dualResidual): " << dualResidualNorm
+        std::cout << "Initial norm(dualResidual): " << dualResidualNorm
                   << " norm(primalResidual): " << primalResidualNorm << "\n";
       } else {
-        std::cerr << "Iter: " << outerIterNum << " InnerItr: " << innerItrNum
+        std::cout << "Iter: " << outerIterNum << " InnerItr: " << innerItrNum
                   << " norm(dualResidual): " << dualResidualNorm << " norm(primalResidual): " << primalResidualNorm
                   << "\n";
       }
     }
     if (dualResidualNorm < settings_.dualResidualTolerance && primalResidualNorm < settings_.primalResidualTolerance) {
+      if (settings_.displayShortSummary) {
+        auto timeElapsed = std::chrono::duration_cast<std::chrono::duration<double>>(clock.now() - startTime);
+        std::cout << "Time elapsed: " << timeElapsed.count() << " [s]\n";
+      }
+
       return true;
     }
 

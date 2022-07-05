@@ -13,7 +13,6 @@ class PdalSolver {
  public:
   using settings_t = pdal::Settings;
 
-  PdalSolver() = default;
   PdalSolver(settings_t settings);
 
   /**

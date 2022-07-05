@@ -8,7 +8,8 @@ using namespace pdal;
 
 TEST(Pdal, elimination_tree_construction) {
   Eigen::Map<const sparseMatrix_t> H(An, An, Ap[An], Ap, Ai, Ax);
-  PdalSolver solver;
+  Settings settings;
+  PdalSolver solver(settings);
   LQProblem lqProblem;
 
   lqProblem.H = H;
@@ -28,7 +29,8 @@ TEST(Pdal, elimination_tree_construction) {
 }
 
 TEST(Pdal, test) {
-  PdalSolver solver;
+  Settings settings;
+  PdalSolver solver(settings);
   LQProblem lqProblem;
 
   lqProblem.H = get_H();

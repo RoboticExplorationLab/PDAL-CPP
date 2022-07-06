@@ -170,12 +170,12 @@ bool PdalSolver::solve(vector_t& x) {
     innerItrNum = newtonSolve(lambda, mu, rho, y, w, x);
 
     // lambda = lambda + rho * (G*xResult-g);
-    lambda += rho * (lqProblem_.G * x);
-    lambda -= rho * lqProblem_.g;
+    lambda.noalias() += rho * (lqProblem_.G * x);
+    lambda.noalias() -= rho * lqProblem_.g;
 
     // mu = mu - rho * (C * x - c);
-    mu -= rho * (lqProblem_.C * x);
-    mu += rho * lqProblem_.c;
+    mu.noalias() -= rho * (lqProblem_.C * x);
+    mu.noalias() += rho * lqProblem_.c;
     mu = mu.cwiseMax(0);
 
     rho *= settings_.amplificationRho;

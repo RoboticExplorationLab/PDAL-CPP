@@ -60,7 +60,18 @@
     "cinttypes": "cpp",
     "typeinfo": "cpp",
     "iomanip": "cpp",
-    "strstream": "cpp"
+    "strstream": "cpp",
+    "*.tpp": "cpp",
+    "any": "cpp",
+    "bitset": "cpp",
+    "codecvt": "cpp",
+    "condition_variable": "cpp",
+    "forward_list": "cpp",
+    "unordered_set": "cpp",
+    "regex": "cpp",
+    "mutex": "cpp",
+    "shared_mutex": "cpp",
+    "variant": "cpp"
   },
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "cSpell.words": [
@@ -71,6 +82,7 @@
     "Ineq",
     "iwork",
     "LDLT",
+    "Osqp",
     "pdal",
     "Pdal",
     "PDAL"

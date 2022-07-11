@@ -22,3 +22,15 @@ target_link_libraries(pdal-test
 
 include(GoogleTest)
 gtest_discover_tests(pdal-test)
+
+find_package(osqp QUIET)
+find_package(OsqpEigen QUIET)
+add_executable(osqp-test
+  TestOSQP.cpp
+  TestData.cpp
+)
+target_link_libraries(osqp-test
+  ${PROJECT_NAME}
+  ${osqp_LIBRARIES}
+  OsqpEigen::OsqpEigen
+)

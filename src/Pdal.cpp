@@ -124,11 +124,11 @@ void PdalSolver::evaluatePrimalDualResidual(const vector_t& lambda, const vector
 }
 
 bool PdalSolver::solve(vector_t& x) {
-  if (x.size() != numDecisionVariables_) {
+  if (numDecisionVariables_ == 0 || x.size() != numDecisionVariables_) {
     std::stringstream ss;
     ss << "The size of the decision variables x is " << x.size()
        << " which is different from the size of decision variables (" << numDecisionVariables_
-       << "). Run setupProblem first or check the input size.";
+       << ") or indicates the uninitialized state. Run setupProblem first or check the input size.";
     throw std::invalid_argument(ss.str());
   }
   std::chrono::high_resolution_clock clock;

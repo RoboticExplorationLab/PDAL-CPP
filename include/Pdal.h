@@ -74,9 +74,9 @@ class PdalSolver {
 
   LQProblem lqProblem_;
 
-  PDAL_int_t numDecisionVariables_;
-  PDAL_int_t numEqConstraints_;
-  PDAL_int_t numIneqConstraints_;
+  PDAL_int_t numDecisionVariables_{};
+  PDAL_int_t numEqConstraints_{};
+  PDAL_int_t numIneqConstraints_{};
 
   vector_t eqConstraints_;   /** Evaluation of the equality constraints */
   vector_t ineqConstraints_; /** Evaluation of the inequality constraints */

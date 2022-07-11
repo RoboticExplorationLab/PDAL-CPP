@@ -15,6 +15,7 @@ struct Settings {
   PDAL_float_t amplificationRho = 2.0;
 
   PDAL_bool_t displayShortSummary = 1;
+  PDAL_bool_t displayRunTime = 1;
 };
 
 }  // namespace pdal

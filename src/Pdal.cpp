@@ -157,9 +157,10 @@ bool PdalSolver::solve(vector_t& x) {
       }
     }
     if (dualResidualNorm < settings_.dualResidualTolerance && primalResidualNorm < settings_.primalResidualTolerance) {
-      if (settings_.displayShortSummary) {
-        auto timeElapsed = std::chrono::duration_cast<std::chrono::duration<double>>(clock.now() - startTime);
-        std::cout << "Time elapsed: " << timeElapsed.count() << " [s]\n";
+      if (settings_.displayShortSummary || settings_.displayRunTime) {
+        auto timeElapsed =
+            std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(clock.now() - startTime);
+        std::cout << "Time elapsed: " << timeElapsed.count() << " [ms]\n";
       }
 
       return true;

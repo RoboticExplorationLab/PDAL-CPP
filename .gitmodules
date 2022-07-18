@@ -1,3 +1,6 @@
 [submodule "qdldl"]
 	path = qdldl
 	url = git@github.com:osqp/qdldl.git
+[submodule "SparseLDL"]
+	path = SparseLDL
+	url = git@github.com:Huoleit/SparseLDL.git

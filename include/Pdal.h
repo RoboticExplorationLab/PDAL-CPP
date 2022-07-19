@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include <SparseLDL/CodeGen/SparseLDLGenerated.h>
 #include <qdldl.h>
 
 #include "LQProblem.h"
@@ -11,6 +12,8 @@
 namespace pdal {
 class PdalSolver {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   using settings_t = pdal::Settings;
 
   PdalSolver(settings_t settings);
@@ -24,6 +27,8 @@ class PdalSolver {
    * @return isSucceed
    */
   bool setupProblem(const LQProblem& lqProblem);
+
+  Eigen::PermutationMatrix<Eigen::Dynamic>& getPermutations() { return perm_; }
 
   /**
    * Solve the buffered LQ-problem. The initial value is required and result will be calculated in place.
@@ -64,7 +69,7 @@ class PdalSolver {
    */
   void evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x);
 
-  const std::vector<QDLDL_int>& etree() const { return etree_; }
+  // const std::vector<QDLDL_int>& etree() const { return etree_; }
   const settings_t& settings() const { return settings_; }
   PDAL_int_t numDecisionVariables() const { return numDecisionVariables_; }
 
@@ -78,15 +83,20 @@ class PdalSolver {
   PDAL_int_t numEqConstraints_{};
   PDAL_int_t numIneqConstraints_{};
 
-  vector_t eqConstraints_;   /** Evaluation of the equality constraints */
-  vector_t ineqConstraints_; /** Evaluation of the inequality constraints */
-  sparseMatrix_t Ic_;
+  vector_t eqConstraints_{};   /** Evaluation of the equality constraints */
+  vector_t ineqConstraints_{}; /** Evaluation of the inequality constraints */
+  sparseMatrix_t Ic_{};
 
   vector_t primalResidual_;
   vector_t dualResidual_;
 
-  std::vector<QDLDL_int> Lnz_;
-  std::vector<QDLDL_int> etree_;
-  QDLDL_int sumLnz_;
+  // std::vector<QDLDL_int> Lnz_;
+  // std::vector<QDLDL_int> etree_;
+  // QDLDL_int sumLnz_;
+
+  Eigen::PermutationMatrix<Eigen::Dynamic> perm_;
+  DxCollection<PDAL_float_t, 8, 4> Dx_;
+  DxCollection<PDAL_float_t, 8, 4> DxInv_;
+  LxCollection<PDAL_float_t, 8, 4> Lx_;
 };
 }  // namespace pdal

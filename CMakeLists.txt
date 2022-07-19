@@ -8,6 +8,7 @@ set(QDLDL_BUILD_SHARED_LIB OFF CACHE INTERNAL "")
 set(QDLDL_BUILD_DEMO_EXE OFF CACHE INTERNAL "")
 set(QDLDL_UNITTESTS OFF CACHE INTERNAL "")
 set(QDLDL_LONG OFF CACHE INTERNAL "")
+set(QDLDL_FLOAT OFF CACHE INTERNAL "")
 
 set(BUILD_BENCHMARKING ON)
 set(BUILD_TESTING ON)
@@ -20,10 +21,15 @@ set(CMAKE_CXX_FLAGS "-Wall -Wfatal-errors")
 include(FetchContent)
 
 find_package(Eigen3 REQUIRED NO_MODULE)
+
 add_subdirectory(qdldl)
+
+set(ENABLE_BENCHMARKS OFF CACHE INTERNAL "")
+add_subdirectory(SparseLDL)
 
 include_directories(
   include
+  SparseLDL/include
 )
 
 # ###########
@@ -35,6 +41,7 @@ add_library(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
   qdldlstatic
   Eigen3::Eigen
+  SparseLDL
 )
 
 # ##################

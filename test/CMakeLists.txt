@@ -20,5 +20,15 @@ target_link_libraries(pdal-test
   gtest_main
 )
 
+add_executable(TestPdalWithSparseLDL
+  TestPdalWithSparseLDL.cpp
+)
+target_link_libraries(TestPdalWithSparseLDL
+  ${PROJECT_NAME}
+  gtest_main
+)
+
+
 include(GoogleTest)
 gtest_discover_tests(pdal-test)
+gtest_discover_tests(TestPdalWithSparseLDL)

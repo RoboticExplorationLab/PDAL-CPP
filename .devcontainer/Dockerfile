@@ -21,7 +21,8 @@ RUN cd /tmp/eigen-3.4.0 && mkdir build && cd build && cmake .. && make && make i
 # [Optional] Uncomment this section to install additional packages.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
-    clang-format
+    clang-format \
+    python3-jinja2 
 
 RUN git clone --recursive https://github.com/osqp/osqp /tmp/osqp
 RUN cd /tmp/osqp && mkdir build && cd build && cmake -G "Unix Makefiles" .. && cmake --build . --target install

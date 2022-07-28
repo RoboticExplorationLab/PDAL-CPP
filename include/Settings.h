@@ -5,12 +5,18 @@
 namespace pdal {
 struct Settings {
   PDAL_float_t initialRho = 10.0;
+
   PDAL_int_t maxOuterIter = 50;
   PDAL_int_t maxInnerIter = 10;
 
-  PDAL_float_t dualResidualTolerance = 1e-8;
-  PDAL_float_t primalResidualTolerance = 1e-6;
-  PDAL_float_t innerTolerance = 1e-6;
+  PDAL_float_t primalResidualAbsoluteTolerance = 1e-3;
+  PDAL_float_t primalResidualRelativeTolerance = 1e-3;
+
+  PDAL_float_t dualResidualAbsoluteTolerance = 1e-3;
+  PDAL_float_t dualResidualRelativeTolerance = 1e-3;
+
+  PDAL_float_t newtonAbsoluteTolerance = 1e-3;
+  PDAL_float_t newtonRelativeTolerance = 1e-3;
 
   PDAL_float_t amplificationRho = 2.0;
 

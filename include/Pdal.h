@@ -11,6 +11,8 @@
 namespace pdal {
 class PdalSolver {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   using settings_t = pdal::Settings;
 
   PdalSolver(settings_t settings);
@@ -78,9 +80,9 @@ class PdalSolver {
   PDAL_int_t numEqConstraints_{};
   PDAL_int_t numIneqConstraints_{};
 
-  vector_t eqConstraints_;   /** Evaluation of the equality constraints */
-  vector_t ineqConstraints_; /** Evaluation of the inequality constraints */
-  sparseMatrix_t Ic_;
+  vector_t eqConstraints_{};   /** Evaluation of the equality constraints */
+  vector_t ineqConstraints_{}; /** Evaluation of the inequality constraints */
+  sparseMatrix_t Ic_{};
 
   vector_t primalResidual_;
   vector_t dualResidual_;

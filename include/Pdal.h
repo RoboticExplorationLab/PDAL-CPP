@@ -69,7 +69,7 @@ class PdalSolver {
    */
   void evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x);
 
-  // const std::vector<QDLDL_int>& etree() const { return etree_; }
+  const std::vector<QDLDL_int>& etree() const { return etree_; }
   const settings_t& settings() const { return settings_; }
   PDAL_int_t numDecisionVariables() const { return numDecisionVariables_; }
 
@@ -87,12 +87,12 @@ class PdalSolver {
   vector_t ineqConstraints_{}; /** Evaluation of the inequality constraints */
   sparseMatrix_t Ic_{};
 
-  vector_t primalResidual_;
   vector_t dualResidual_;
+  vector_t primalResidual_;
 
-  // std::vector<QDLDL_int> Lnz_;
-  // std::vector<QDLDL_int> etree_;
-  // QDLDL_int sumLnz_;
+  std::vector<QDLDL_int> Lnz_;
+  std::vector<QDLDL_int> etree_;
+  QDLDL_int sumLnz_;
 
   Eigen::PermutationMatrix<Eigen::Dynamic> perm_;
   DxCollection<PDAL_float_t, 8, 4> Dx_;

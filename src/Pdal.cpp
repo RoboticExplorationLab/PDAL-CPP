@@ -14,8 +14,6 @@
 #include <sstream>
 #include <vector>
 
-#include <Eigen/Cholesky>
-
 namespace pdal {
 
 namespace {
@@ -51,29 +49,28 @@ bool PdalSolver::setupProblem(const LQProblem& lqProblem) {
 
   resize();
 
-  // // Construct elimination tree
-  // PDAL_int_t Hn = numDecisionVariables_ + numEqConstraints_ + numIneqConstraints_;
-  // PDAL_int_t nnzHessian = (Hn + 1) * Hn / 2;
-  // std::vector<triplet_t> hessianTriplets;
-  // hessianTriplets.reserve(nnzHessian);
-  // emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
-  // emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
-  // emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, lqProblem_.C.transpose(),
-  // hessianTriplets); emplaceRepeatDiagonalToTriplet(numDecisionVariables_, 1.0, numEqConstraints_ +
-  // numIneqConstraints_, hessianTriplets);
+  // Construct elimination tree
+  PDAL_int_t Hn = numDecisionVariables_ + numEqConstraints_ + numIneqConstraints_;
+  PDAL_int_t nnzHessian = (Hn + 1) * Hn / 2;
+  std::vector<triplet_t> hessianTriplets;
+  hessianTriplets.reserve(nnzHessian);
+  emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
+  emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
+  emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, lqProblem_.C.transpose(), hessianTriplets);
+  emplaceRepeatDiagonalToTriplet(numDecisionVariables_, 1.0, numEqConstraints_ + numIneqConstraints_, hessianTriplets);
 
-  // sparseMatrix_t hessian(Hn, Hn);
-  // hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
-  // assert(hessian.isCompressed());
-  // assert(hessian.nonZeros() <= nnzHessian);
+  sparseMatrix_t hessian(Hn, Hn);
+  hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
+  assert(hessian.isCompressed());
+  assert(hessian.nonZeros() <= nnzHessian);
 
-  // Lnz_.resize(Hn);
-  // etree_.resize(Hn);
-  // std::vector<PDAL_int_t> flag(Hn);
-  // sumLnz_ = QDLDL_etree(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(), flag.data(), Lnz_.data(),
-  // etree_.data()); if (sumLnz_ < 0) {
-  //   throw std::runtime_error("QDLDL_etree failed.");
-  // }
+  Lnz_.resize(Hn);
+  etree_.resize(Hn);
+  std::vector<PDAL_int_t> flag(Hn);
+  sumLnz_ = QDLDL_etree(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(), flag.data(), Lnz_.data(), etree_.data());
+  if (sumLnz_ < 0) {
+    throw std::runtime_error("QDLDL_etree failed.");
+  }
 
   return true;
 }
@@ -118,16 +115,19 @@ void PdalSolver::evaluateConstraints(const vector_t& mu, const vector_t& x) {
 }
 
 void PdalSolver::evaluatePrimalDualResidual(const vector_t& lambda, const vector_t& mu, const vector_t& x) {
-  // primalResidual = H * xResult + h + G '*lambda - C' * mu;
-  primalResidual_ = lqProblem_.h;
-  primalResidual_.noalias() += lqProblem_.H * x;
-  primalResidual_.noalias() += lqProblem_.G.transpose() * lambda;
+  // dualResidual = H * xResult + h + G '*lambda - C' * mu;
+  dualResidual_ = lqProblem_.h;
+  dualResidual_.noalias() += lqProblem_.H * x;
+  dualResidual_.noalias() += lqProblem_.G.transpose() * lambda;
   if (numIneqConstraints_ > 0) {
-    primalResidual_.noalias() -= lqProblem_.C.transpose() * mu;
+    dualResidual_.noalias() -= lqProblem_.C.transpose() * mu;
   }
 
-  dualResidual_.head(numEqConstraints_) = eqConstraints_;
-  dualResidual_.tail(numIneqConstraints_) = ineqConstraints_.cwiseMax(0);
+  // primalResidual = [Gz - g;max(-Cz+c, 0)];
+  primalResidual_.head(numEqConstraints_) = eqConstraints_;
+  if (numIneqConstraints_ > 0) {
+    primalResidual_.tail(numIneqConstraints_) = ineqConstraints_.cwiseMax(0);
+  }
 }
 
 bool PdalSolver::solve(vector_t& x) {
@@ -141,6 +141,8 @@ bool PdalSolver::solve(vector_t& x) {
   std::chrono::high_resolution_clock clock;
   auto startTime = clock.now();
 
+  int newtonStepCounter = 0;
+
   PDAL_float_t rho = settings_.initialRho;
   vector_t lambda = vector_t::Zero(numEqConstraints_); /** Equality constraints multiplier */
   vector_t mu = vector_t::Zero(numIneqConstraints_);   /** Inequality constraints multiplier */
@@ -150,24 +152,29 @@ bool PdalSolver::solve(vector_t& x) {
     evaluateConstraints(mu, x);
     evaluatePrimalDualResidual(lambda, mu, x);
 
-    PDAL_float_t dualResidualNorm = dualResidual_.norm();
-    PDAL_float_t primalResidualNorm = primalResidual_.norm();
+    const PDAL_float_t dualResidualNorm = primalResidual_.lpNorm<Eigen::Infinity>();
+    const PDAL_float_t primalResidualNorm = dualResidual_.lpNorm<Eigen::Infinity>();
 
     if (settings_.displayShortSummary) {
       if (outerIterNum == 0) {
-        std::cout << "Initial norm(dualResidual): " << dualResidualNorm
-                  << " norm(primalResidual): " << primalResidualNorm << "\n";
+        std::cout << "Initial norm(primalResidual): " << primalResidualNorm
+                  << " norm(dualResidual): " << dualResidualNorm << "\n";
       } else {
         std::cout << "Iter: " << outerIterNum << " InnerItr: " << innerItrNum
-                  << " norm(dualResidual): " << dualResidualNorm << " norm(primalResidual): " << primalResidualNorm
-                  << "\n";
+                  << " norm(primalResidual): " << primalResidualNorm << " norm(dualResidual): " << dualResidualNorm
+                  << " Rho: " << rho << "\n";
       }
     }
-    if (dualResidualNorm < settings_.dualResidualTolerance && primalResidualNorm < settings_.primalResidualTolerance) {
+    if (dualResidualNorm <
+            settings_.dualResidualAbsoluteTolerance + settings_.dualResidualRelativeTolerance * dualResidualNorm &&
+        primalResidualNorm < settings_.primalResidualAbsoluteTolerance +
+                                 settings_.primalResidualRelativeTolerance * primalResidualNorm) {
       if (settings_.displayShortSummary || settings_.displayRunTime) {
         auto timeElapsed =
             std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(clock.now() - startTime);
-        std::cout << "Time elapsed: " << timeElapsed.count() << " [ms]\n";
+        std::cout << "Time elapsed: " << timeElapsed.count() << " [ms] "
+                  << "Total Newton step: " << newtonStepCounter
+                  << " time per newton step: " << timeElapsed.count() / newtonStepCounter << " [ms]\n";
       }
 
       return true;
@@ -176,6 +183,7 @@ bool PdalSolver::solve(vector_t& x) {
     vector_t y = lambda + rho * eqConstraints_;
     vector_t w = mu + rho * Ic_ * ineqConstraints_;
     innerItrNum = newtonSolve(lambda, mu, rho, y, w, x);
+    newtonStepCounter += innerItrNum == -1 ? settings_.maxInnerIter : innerItrNum;
 
     // lambda = lambda + rho * (G*xResult-g);
     lambda.noalias() += rho * (lqProblem_.G * x);
@@ -209,59 +217,41 @@ int PdalSolver::newtonSolve(const vector_t& lambda, const vector_t& mu, const PD
     PDAL_int_t Hn = numDecisionVariables_ + numEqConstraints_ + numIneqConstraints_;
     vector_t residual(Hn);
     residual << L, eqConstraints_ + 1 / rho * (lambda - y), Ic_ * ineqConstraints_ + 1 / rho * (mu - w);
-    if (residual.norm() < settings_.innerTolerance) {
+    const PDAL_float_t residualNorm = residual.lpNorm<Eigen::Infinity>();
+    if (residualNorm < settings_.newtonAbsoluteTolerance + settings_.newtonRelativeTolerance * residualNorm) {
       return innerIterNum;
     }
 
-    // PDAL_int_t nnzHessian = ((Hn + 1) * Hn) / 2;
-    // std::vector<triplet_t> hessianTriplets;
-    // hessianTriplets.reserve(nnzHessian);
-    // emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
-    // emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
-    // emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, (-Ic_ * lqProblem_.C).transpose(),
-    //                            hessianTriplets);
-    // emplaceRepeatDiagonalToTriplet(numDecisionVariables_, -1.0 / rho, numEqConstraints_ + numIneqConstraints_,
-    //                                hessianTriplets);
+    PDAL_int_t nnzHessian = ((Hn + 1) * Hn) / 2;
+    std::vector<triplet_t> hessianTriplets;
+    hessianTriplets.reserve(nnzHessian);
+    emplaceBackMatrixToTriplet(0, 0, lqProblem_.H.triangularView<Eigen::Upper>(), hessianTriplets);
+    emplaceBackMatrixToTriplet(0, numDecisionVariables_, lqProblem_.G.transpose(), hessianTriplets);
+    emplaceBackMatrixToTriplet(0, numDecisionVariables_ + numEqConstraints_, (-Ic_ * lqProblem_.C).transpose(),
+                               hessianTriplets);
+    emplaceRepeatDiagonalToTriplet(numDecisionVariables_, -1.0 / rho, numEqConstraints_ + numIneqConstraints_,
+                                   hessianTriplets);
 
-    // sparseMatrix_t hessian(Hn, Hn);
-    // hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
-    // assert(hessian.nonZeros() <= nnzHessian);
+    sparseMatrix_t hessian(Hn, Hn);
+    hessian.setFromTriplets(hessianTriplets.cbegin(), hessianTriplets.cend());
+    assert(hessian.nonZeros() <= nnzHessian);
 
-    // std::vector<QDLDL_int> Lp(Hn + 1), Li(sumLnz_);
-    // std::vector<QDLDL_float> Lx(sumLnz_);
-    // std::vector<QDLDL_float> D(Hn), Dinv(Hn);
-    // std::vector<QDLDL_bool> bwork(Hn);
-    // std::vector<QDLDL_int> iwork(3 * Hn);
-    // std::vector<QDLDL_float> fwork(Hn);
+    std::vector<QDLDL_int> Lp(Hn + 1), Li(sumLnz_);
+    std::vector<QDLDL_float> Lx(sumLnz_);
+    std::vector<QDLDL_float> D(Hn), Dinv(Hn);
+    std::vector<QDLDL_bool> bwork(Hn);
+    std::vector<QDLDL_int> iwork(3 * Hn);
+    std::vector<QDLDL_float> fwork(Hn);
 
-    // QDLDL_int positiveValuesInD = QDLDL_factor(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(),
-    // hessian.valuePtr(),
-    //                                            Lp.data(), Li.data(), Lx.data(), D.data(), Dinv.data(), Lnz_.data(),
-    //                                            etree_.data(), bwork.data(), iwork.data(), fwork.data());
-    // if (positiveValuesInD < 0) {
-    //   throw std::runtime_error("LDLT factorization fail.");
-    // }
+    QDLDL_int positiveValuesInD = QDLDL_factor(Hn, hessian.outerIndexPtr(), hessian.innerIndexPtr(), hessian.valuePtr(),
+                                               Lp.data(), Li.data(), Lx.data(), D.data(), Dinv.data(), Lnz_.data(),
+                                               etree_.data(), bwork.data(), iwork.data(), fwork.data());
+    if (positiveValuesInD < 0) {
+      throw std::runtime_error("LDLT factorization fail.");
+    }
 
     vector_t dz = -residual;
-    // auto ldlt = hessian.toDense().selfadjointView<Eigen::Upper>().ldlt();
-    // vector_t eigen_ref = ldlt.solve(dz);
-    vector_t dz_my = perm_.transpose() * dz;
-    // QDLDL_solve(Hn, Lp.data(), Li.data(), Lx.data(), Dinv.data(), dz.data());
-
-    solveWithSparseLDL(lqProblem_.dynamics, lqProblem_.cost, Lx_, Dx_, DxInv_, dz_my, static_cast<scalar_t>(1.0 / rho));
-    dz = perm_ * dz_my;
-    // if (!permuted.isApprox(eigen_ref)) {
-    //   std::cerr << "|ref - dz|_inf = " << (permuted - eigen_ref).lpNorm<Eigen::Infinity>() << "\n\n";
-    //   std::cerr << "My: \n" << permuted.transpose() << "\n\n";
-    //   std::cerr << "Eigen ref: \n" << eigen_ref.transpose() << "\n\n";
-    //   std::cerr << "Diff: \n" << (permuted - eigen_ref).cwiseAbs().transpose() << "\n\n";
-    //   // std::cerr << -residual.transpose() << "\n\n";
-    //   // std::cerr << dz.transpose() << "\n\n";
-    //   // std::cerr << perm_.indices().transpose() << "\n\n";
-    //   // std::cerr << perm_.transpose() << "\n\n";
-
-    //   throw std::runtime_error("LDLT solve fail.");
-    // }
+    QDLDL_solve(Hn, Lp.data(), Li.data(), Lx.data(), Dinv.data(), dz.data());
     x += dz.head(numDecisionVariables_);
     y += dz.segment(numDecisionVariables_, numEqConstraints_);
     w += dz.tail(numIneqConstraints_);

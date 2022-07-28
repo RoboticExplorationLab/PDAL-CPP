@@ -47,9 +47,10 @@ TEST(Pdal, test) {
   vector_t x = vector_t::Zero(solver.numDecisionVariables());
   solver.solve(x);
 
-  EXPECT_LE((lqProblem.G * x - lqProblem.g).norm(), solver.settings().dualResidualTolerance);  // Equality constraints
+  EXPECT_LE((lqProblem.G * x - lqProblem.g).lpNorm<Eigen::Infinity>(),
+            solver.settings().dualResidualAbsoluteTolerance);  // Equality constraints
 
   vector_t inEq = lqProblem.C * x - lqProblem.c;
-  EXPECT_LE(inEq.cwiseMin(0).norm(), solver.settings().dualResidualTolerance)
+  EXPECT_LE(inEq.cwiseMin(0).lpNorm<Eigen::Infinity>(), solver.settings().dualResidualAbsoluteTolerance)
       << "Ineq: " << inEq.transpose();  // Inequality constraints
 }
